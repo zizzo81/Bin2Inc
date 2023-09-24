@@ -1,0 +1,48 @@
+﻿<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+    <PropertyGroup>
+        <ProjectGuid>{79D64607-903C-409A-9BD7-504FA261FAFB}</ProjectGuid>
+    </PropertyGroup>
+    <ItemGroup>
+        <Projects Include="Bin2Inc.dproj">
+            <Dependencies/>
+        </Projects>
+        <Projects Include="IncTest.dproj">
+            <Dependencies/>
+        </Projects>
+    </ItemGroup>
+    <ProjectExtensions>
+        <Borland.Personality>Default.Personality.12</Borland.Personality>
+        <Borland.ProjectType/>
+        <BorlandProject>
+            <Default.Personality/>
+        </BorlandProject>
+    </ProjectExtensions>
+    <Target Name="Bin2Inc">
+        <MSBuild Projects="Bin2Inc.dproj"/>
+    </Target>
+    <Target Name="Bin2Inc:Clean">
+        <MSBuild Projects="Bin2Inc.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="Bin2Inc:Make">
+        <MSBuild Projects="Bin2Inc.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="IncTest">
+        <MSBuild Projects="IncTest.dproj"/>
+    </Target>
+    <Target Name="IncTest:Clean">
+        <MSBuild Projects="IncTest.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="IncTest:Make">
+        <MSBuild Projects="IncTest.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="Build">
+        <CallTarget Targets="Bin2Inc;IncTest"/>
+    </Target>
+    <Target Name="Clean">
+        <CallTarget Targets="Bin2Inc:Clean;IncTest:Clean"/>
+    </Target>
+    <Target Name="Make">
+        <CallTarget Targets="Bin2Inc:Make;IncTest:Make"/>
+    </Target>
+    <Import Project="$(BDS)\Bin\CodeGear.Group.Targets" Condition="Exists('$(BDS)\Bin\CodeGear.Group.Targets')"/>
+</Project>

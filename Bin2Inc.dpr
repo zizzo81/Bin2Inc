@@ -5,13 +5,11 @@ program Bin2Inc;
 {$R *.res}
 
 uses
-  SysUtils,
-  Classes,// Windows,
-  Exceptions in 'Exceptions.pas';
+  SysUtils, Classes;
 
 const
-  VERSION = '1.0';
-  YEAR = 2002;
+  VERSION = '1.1';
+  YEAR = 2023;
 
 function CopyrightLine: String; inline;
 begin
@@ -26,6 +24,34 @@ begin
     2: Result := 'Word';
     4: Result := 'Cardinal';
     8: Result := 'UInt64'
+  end
+end;
+
+procedure PrintHelp(const S: String = ''); inline;
+begin
+  WriteLn(CopyrightLine);
+  WriteLn;
+  WriteLn('Usage:');
+  WriteLn(#9 + ExtractFileName(ParamStr(0)) + ' [-a:#] [-r] -i:filemask [-i:filemask...] [-o:file.inc]');
+  WriteLn;
+  WriteLn('-a'#9'Specifies a desired alignment (1, 2, 4, 8) if file can''t be aligned');
+  WriteLn(#9'or no alignment is specified, best alignment possible is determined');
+  WriteLn(#9'automatically.');
+  WriteLn('-c:##'#9'Specifies number of columns of values to use, defaults to 8.');
+  WriteLn('-l'#9'Uses lowercase for hexadecimal values. Defaults to uppercase.');
+  WriteLn('-r'#9'Searches for files recursively.');
+  WriteLn('-y'#9'Automatically overwrites existing file.');
+  WriteLn('-i'#9'Specifies one or more filemask for files to include in the file.');
+  WriteLn('-o'#9'Specifies the filename for output file, defaults to file.inc');
+  WriteLn('-s:##'#9'Uses a given number of spaces as indent. Default to 2.');
+  WriteLn('-t'#9'Uses a tabulation as indent.');
+
+  // TODO: allow to specify a intra-column spacing
+  if Length(S) > 0 then
+  begin
+    WriteLn;
+    WriteLn;
+    WriteLn(S)
   end
 end;
 
@@ -84,39 +110,72 @@ begin
   OutputStream.Write(A[1], Length(A))
 end;
 
+var
+  FilesCounter: Integer = 0;
+  ConstNames: TStringList;
+
 function PurgeFilename(const Filename: String): String;
 var
   I: Integer;
 begin
-  Result := UpperCase(Format('BIN_%s', [ExtractFileName(Filename)]));
+  // Removes path and keeps filename and extension only.
+  Result := UpperCase(ExtractFileName(Filename));
+
+  // Replace unwanted characters with underscore symbol.
   for I := 1 to Length(Result) do
     if not CharInSet(Result[I], ['A'..'Z', '0'..'9']) then
       Result[I] := '_';
+
+  // Remove duplicates.
   while Pos(Result, '__') > 0 do
     Result := StringReplace(Result, '__', '_', [rfReplaceAll]);
+
+  // Remove initial invalid characters.
   while (Length(Result) > 0) and ((Result[1] = '_') or CharInSet(Result[1], ['0'..'9'])) do
-    Delete(Result, 1, 1)
+    Delete(Result, 1, 1);
+
+  // Just in case...
+  if Length(Result) = 0 then
+  begin
+    Result := Format('FILE_%d', [FilesCounter]);
+    Inc(FilesCounter)
+  end;
+
+  Result := Format('BIN_%s', [Result]);
+
+  // Avoid duplicates.
+  while ConstNames.IndexOf(Result) > -1 do
+  begin
+    Result := Format('BIN_FILE_%d', [FilesCounter]);
+    Inc(FilesCounter)
+  end;
+
+  ConstNames.Add(Result)
 end;
 
 function AddFile(const Filename: String): Byte;
 var
   FStream: TFileStream;
-  Align, B: Byte;
-  W: Word;
-  DW: Cardinal;
-  UI: UInt64;
+  MStream: TMemoryStream;
+  Align: Byte;
+  PB: PByte;
+  PW: PWord;
+  PDW: PCardinal;
+  PUI: PUInt64;
   I: Int64;
   S: String;
 begin
   Result := 0;
 
+  // Opens file in readonly mode.
   try
     FStream := TFileStream.Create(Filename, fmOpenRead or fmShareDenyWrite);
   except
     Exit
   end;
-  try
 
+  try
+    // Decide best possible alignment for the file.
     if (Alignment > 0) and (FStream.Size mod Alignment = 0) then
       Align := Alignment
     else if FStream.Size mod 8 = 0 then
@@ -128,75 +187,73 @@ begin
     else
       Align := 1;
 
-    // Write out the
+    // Write out the header of the file.
     WriteToFile(Format(Spacer + '// generated from file "%s"', [ExtractFileName(Filename)]));
     WriteToFile(Format(Spacer + '%S: Array[0..%d] of %s =', [PurgeFilename(Filename), (FStream.Size div Align) - 1, AlignmentToStr(Align)]));
     WriteToFile(Spacer + '(');
 
-    FStream.Position := 0;
-    S := '';
-    // TODO: to create this faster, load a big buffer into memory and use it as
-    //       a byte array to read from, less reads from disk, faster execution.
-    for I := 0 to (FStream.Size div Align) - 1 do
-    begin
-      case Align of
-        1:
-        begin
-          FStream.Read(B, Align);
-          S := S + '$';
-          if UseLowercase then
-            S := S + LowerCase(IntToHex(B, Align * 2))
-          else
-            S := S + IntToHex(B, Align * 2);
-          S := S + ', ';
-        end;
-        2:
-        begin
-          FStream.Read(W, Align);
-          S := S + '$';
-          if UseLowercase then
-            S := S + LowerCase(IntToHex(W, Align * 2))
-          else
-            S := S + IntToHex(W, Align * 2);
-          S := S + ', ';
-        end;
-        4:
-        begin
-          FStream.Read(DW, Align);
-          S := S + '$';
-          if UseLowercase then
-            S := S + LowerCase(IntToHex(DW, Align * 2))
-          else
-            S := S + IntToHex(DW, Align * 2);
-          S := S + ', ';
-        end;
-        8:
-        begin
-          FStream.Read(UI, Align);
-          S := S + '$';
-          if UseLowercase then
-            S := S + LowerCase(IntToHex(UI, Align * 2))
-          else
-            S := S + IntToHex(UI, Align * 2);
-          S := S + ','#32;
-        end;
-      end;
+    MStream := TMemoryStream.Create;
+    try
+      FStream.Position := 0;
+      S := '';
 
-      // If I'm on a repetition I need to create a new line.
-      if (I > 0) and ((I + 1) mod Columns = 0) then
+      while FStream.Position < FStream.Size do
       begin
-        // Removes the trailing comma if I'm on the last interaction of the cycle.
-        if I = (FStream.Size div Align) - 1 then
+        MStream.Clear;
+
+        // Reads up to 100k items per time.
+        I := Align * 100000;
+        if I > FStream.Size - FStream.Position then
+          I := FStream.Size - FStream.Position;
+
+        MStream.CopyFrom(FStream, I);
+        PB := MStream.Memory;
+        PW := MStream.Memory;
+        PDW := MStream.Memory;
+        PUI := MStream.Memory;
+
+        for I := 0 to (MStream.Size div Align) - 1 do
         begin
-          S := Trim(S);
-          if S[Length(S)] = ',' then
-            Delete(S, Length(S), 1)
-        end;
-        // Writes to file.
-        WriteToFile(Spacer + Spacer + Trim(S));
-        // Empty the output buffer.
-        S := ''
+
+          S := S + '$';
+          case Align of
+            1: S := S + IntToHex(PB^, Align * 2);
+            2: S := S + IntToHex(PW^, Align * 2);
+            4: S := S + IntToHex(PDW^, Align * 2);
+            8: S := S + IntToHex(PUI^, Align * 2)
+          end;
+          S := S + ','#32;
+
+          Inc(PB);
+          Inc(PW);
+          Inc(PDW);
+          Inc(PUI);
+
+          // If I'm on a repetition I need to create a new line.
+          if (I > 0) and ((I + 1) mod Columns = 0) then
+          begin
+            // Removes the trailing comma if I'm on the last interaction of the cycle.
+            if (FStream.Position = FStream.Size) and (I = (MStream.Size div Align) - 1) then
+            begin
+              S := Trim(S);
+              if S[Length(S)] = ',' then
+                Delete(S, Length(S), 1)
+            end;
+
+            // Applies lower if necessary
+            if UseLowercase then
+              S := LowerCase(S);
+
+            // Writes to file.
+            WriteToFile(Spacer + Spacer + Trim(S));
+
+            // Empty the output buffer.
+            S := ''
+          end
+        end
       end
+    finally
+      MStream.Free
     end;
 
     // If I have still something in the buffer to put out...
@@ -206,6 +263,11 @@ begin
       // Removes last comma.
       if S[Length(S)] = ',' then
         Delete(S, Length(S), MaxInt);
+
+      // Applies lower if necessary
+      if UseLowercase then
+        S := LowerCase(S);
+
       // Writes to file.
       WriteToFile(Spacer + Spacer + S)
     end;
@@ -219,6 +281,9 @@ begin
   end
 end;
 
+type
+  ExitException = class(Exception);
+
 var
   OverWrite: Boolean = False;
   OutputFileName: String = 'file.inc';
@@ -227,6 +292,7 @@ var
 begin
   try
     Files := TStringList.Create;
+    ConstNames := TStringList.Create;
     try
       // Reads parameters from command line.
       for I := 1 to ParamCount do
@@ -235,7 +301,7 @@ begin
         X := Pos(UpCase((Copy(ParamStr(I), 2, 1) + #32)[1]), 'ACLRYIOST');
         // Check for initial "-" or "/" symbol.
         if not CharInSet((Copy(ParamStr(I), 1, 1) + #32)[1], ['-', '/']) or (X = 0) then
-          raise ExitException.Create('Invalid parameter "%s".', [ParamStr(I)], True);
+          raise ExitException.Create(Format('Invalid parameter "%s".', [ParamStr(I)]));
 
         // Check and apply each option.
         case X of
@@ -245,7 +311,7 @@ begin
                CharInSet((Copy(ParamStr(I), 4, 1) + #32)[1], ['1', '2', '4', '8']) then
               Alignment := Ord((Copy(ParamStr(I), 4, 1) + #32)[1]) - 48
             else
-              raise ExitException.Create('Invalid parameter "%s".', [ParamStr(I)], True);
+              raise ExitException.Create(Format('Invalid parameter "%s".', [ParamStr(I)]));
           2: // -c:# or -c:##
             if ((Length(ParamStr(I)) = 4) or (Length(ParamStr(I)) = 5)) and
                CharInSet((Copy(ParamStr(I), 3, 1) + #32)[1], [#32, ':']) and
@@ -257,32 +323,32 @@ begin
               else
                 Columns := (Ord((Copy(ParamStr(I), 4, 1) + '0')[1]) - 48) * 10 + (Ord((Copy(ParamStr(I), 5, 1) + '0')[1]) - 48)
             end else
-              raise ExitException.Create('Invalid parameter "%s".', [ParamStr(I)], True);
+              raise ExitException.Create(Format('Invalid parameter "%s".', [ParamStr(I)]));
           3: // -l
             if Length(ParamStr(I)) = 2 then
               UseLowercase := True
             else
-              raise ExitException.Create('Invalid parameter "%s".', [ParamStr(I)], True);
+              raise ExitException.Create(Format('Invalid parameter "%s".', [ParamStr(I)]));
           4:  // -r
             if Length(ParamStr(I)) = 2 then
               Recursive := True
             else
-              raise ExitException.Create('Invalid parameter "%s".', [ParamStr(I)], True);
+              raise ExitException.Create(Format('Invalid parameter "%s".', [ParamStr(I)]));
           5:  // -y
             if Length(ParamStr(I)) = 2 then
               OverWrite := True
             else
-              raise ExitException.Create('Invalid parameter "%s".', [ParamStr(I)], True);
+              raise ExitException.Create(Format('Invalid parameter "%s".', [ParamStr(I)]));
           6:  // -i:filemask
             if (Length(ParamStr(I)) > 3) and CharInSet((Copy(ParamStr(I), 3, 1) + #32)[1], [#32, ':']) then
               FindFiles(GetCurrentDir, Copy(ParamStr(I), 4, MaxInt))
             else
-              raise ExitException.Create('Invalid parameter "%s".', [ParamStr(I)], True);
+              raise ExitException.Create(Format('Invalid parameter "%s".', [ParamStr(I)]));
           7:  // -o:filename
             if (Length(ParamStr(I)) > 3) and CharInSet((Copy(ParamStr(I), 3, 1) + #32)[1], [#32, ':']) then
               OutputFileName := Copy(ParamStr(I), 4, MaxInt)
             else
-              raise ExitException.Create('Invalid parameter "%s".', [ParamStr(I)], True);
+              raise ExitException.Create(Format('Invalid parameter "%s".', [ParamStr(I)]));
           8:  // -s:# or -s:##
             if ((Length(ParamStr(I)) = 4) or (Length(ParamStr(I)) = 5)) and
                CharInSet((Copy(ParamStr(I), 3, 1) + #32)[1], [#32, ':']) and
@@ -295,12 +361,12 @@ begin
                 Spacer := StringOfChar(#32, (Ord((Copy(ParamStr(I), 4, 1) + '0')[1]) - 48) * 10 +
                   (Ord((Copy(ParamStr(I), 5, 1) + '0')[1]) - 48))
             end else
-              raise ExitException.Create('Invalid parameter "%s".', [ParamStr(I)], True);
+              raise ExitException.Create(Format('Invalid parameter "%s".', [ParamStr(I)]));
           9:  // -t
             if Length(ParamStr(I)) = 2 then
               Spacer := #9
             else
-              raise ExitException.Create('Invalid parameter "%s".', [ParamStr(I)], True);
+              raise ExitException.Create(Format('Invalid parameter "%s".', [ParamStr(I)]))
         end
       end;
 
@@ -308,8 +374,8 @@ begin
       if Files.Count = 0 then
         raise ExitException.Create('No files to include have been found.');
 
+      // Asck for overwrite confirmation if necessary.
       if FileExists(OutputFileName) and not OverWrite then
-      begin
         while True do
         begin
           Write(Format('Overwrite file "%s"? (Y/N) ', [OutputFileName]));
@@ -319,8 +385,7 @@ begin
             Break
           else if S = 'N' then
             Exit
-        end
-      end;
+        end;
 
       // Start creation.
       WriteLn('Starting creating "' + OutputFileName + '" file.');
@@ -343,20 +408,19 @@ begin
         // While we have files in the list...
         while Files.Count > 0 do
         begin
-          Write('Including "');
-          Write(StringReplace(Files[0], GetCurrentDir, '', [rfIgnoreCase]));
-          Write('"... ');
+          S := StringReplace(Files[0], GetCurrentDir, '', [rfIgnoreCase]);
+          while (Length(S) > 0) and (S[1] = '\') do
+            Delete(S, 1, 1);
+          Write(Format('Including "%s"...'#32, [S]));
 
           // Add the file to the INC.
           X := AddFile(Files[0]);
-          if X > 0 then
-          begin
-            if X <> Alignment then
-              WriteLn(Format('done, aligned to %d byte(s) (%s)', [X, AlignmentToStr(X)]))
-            else
-              WriteLn('done.')
-          end else
-            WriteLn('FAILED!');
+          if X = 0 then
+            WriteLn('FAILED!')
+          else if X <> Alignment then
+            WriteLn(Format('done, aligned to %d byte(s) (%s)', [X, AlignmentToStr(X)]))
+          else
+            WriteLn('done.');
 
           // Remove file from the list.
           Files.Delete(0);
@@ -371,35 +435,12 @@ begin
         OutputStream.Free
       end
     finally
-      Files.Free
+      Files.Free;
+      ConstNames.Free
     end
   except
     on E: ExitException do
-    begin
-      WriteLn(CopyrightLine);
-      WriteLn;
-      WriteLn('Usage:');
-      WriteLn(#9 + ExtractFileName(ParamStr(0)) + ' [-a:#] [-r] -i:filemask [-i:filemask...] [-o:file.inc]');
-      WriteLn;
-      WriteLn('-a'#9'Specifies a desired alignment (1, 2, 4, 8) if file can''t be aligned');
-      WriteLn(#9'or no alignment is specified, best alignment possible is determined');
-      WriteLn(#9'automatically.');
-      WriteLn('-c:##'#9'Specifies number of columns of values to use, defaults to 8.');
-      WriteLn('-l'#9'Uses lowercase for hexadecimal values. Defaults to uppercase.');
-      WriteLn('-r'#9'Searches for files recursively.');
-      WriteLn('-y'#9'Automatically overwrites existing file.');
-      WriteLn('-i'#9'Specifies one or more filemask for files to include in the file.');
-      WriteLn('-o'#9'Specifies the filename for output file, defaults to file.inc');
-      WriteLn('-s:##'#9'Uses a given number of spaces as indent. Default to 2.');
-      WriteLn('-t'#9'Uses a tabulation as indent.');
-      // TODO: allow to specify a intra-column spacing
-      if Length(E.Message) > 0 then
-      begin
-        WriteLn;
-        WriteLn;
-        WriteLn(E.Message)
-      end
-    end;
+      PrintHelp(E.Message);
     on E: Exception do
       Writeln(E.ClassName, ': ', E.Message)
   end

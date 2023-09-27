@@ -35,5 +35,8 @@ bin2inc -i:commedia.txt -o:test.inc
 
 Now, build IncTest.dpr in the "bin" folder too and just run it from the folder, it will compare content of original file with that in the include file.
 
-## Known issues
-The tool is extremely slow because it continuosly reads from file small portions, loading the entire file to memory and then reading from there could make it almost immediate.
+## Version history
+| Version | Release date | Description |
+|---------|--------------|-------------|
+| 1.0 | 2002 | First version created in early '00s, released Sep 24, 2023 on GitHub. |
+| 1.1 | 2023-09-27 | Fixed an old slow implementation and corrected small things. |

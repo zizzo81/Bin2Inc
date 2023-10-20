@@ -40,3 +40,4 @@ Now, build IncTest.dpr in the "bin" folder too and just run it from the folder, 
 |---------|--------------|-------------|
 | 1.0 | 2002 | First version created in early '00s, released Sep 24, 2023 on GitHub. |
 | 1.1 | 2023-09-27 | Fixed an old slow implementation and corrected small things. |
+| 1.1 | 2023-10-20 | Added a sample project showing how to use this. |

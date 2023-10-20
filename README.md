@@ -18,6 +18,33 @@ Simply run the bin2inc tool from command line and specify the parameters you wan
 | -t | :x: | :x: | :x: | Specifies that indentation should be made with a tabulation character. |
 | -y | :x: | :x: | :x: | Specifies to automatically overwrite existing output file. |
 
+## Including a constant in the code
+You can include a .inc file almost anywhere in a .pas file putting a `$I` compiler directive as long as the code doesn't break, for example you could include it under your `interface` or `implementation` section like this.
+
+```delphi
+...
+implementation
+
+uses
+  SysUtils;
+
+{$I 'bin\test.inc'}
+...
+```
+
+Or also, include this inside a function like this.
+
+```delphi
+...
+procedure GenerateOutputFile;
+{$I 'bin\test.inc'}
+var
+  I: Integer;
+  S: String;
+begin
+...
+```
+
 ## Using a .inc constant
 You can access the constant as you wish, but you can move it back to a memory stream for example in this way:
 

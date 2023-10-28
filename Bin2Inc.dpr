@@ -43,10 +43,11 @@ uses
 const
   VERSION = '1.2';
   YEAR = 2023;
+  ARCH = {$IFDEF WIN64}'x64'{$ELSE}'x86'{$ENDIF};
 
 function CopyrightLine: String; inline;
 begin
-  Result := Format('%s v. %s Copyright '#169' Christian Cristofori, %d.', [ChangeFileExt(ExtractFileName(ParamStr(0)), ''), VERSION, YEAR])
+  Result := Format('%s v. %s %s Copyright '#169' Christian Cristofori, %d.', [ChangeFileExt(ExtractFileName(ParamStr(0)), ''), VERSION, ARCH, YEAR])
 end;
 
 function AlignmentToStr(const A: Byte): String; inline;

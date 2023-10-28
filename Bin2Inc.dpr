@@ -8,7 +8,7 @@ uses
   SysUtils, Classes;
 
 const
-  VERSION = '1.1';
+  VERSION = '1.2';
   YEAR = 2023;
 
 function CopyrightLine: String; inline;
@@ -32,12 +32,13 @@ begin
   WriteLn(CopyrightLine);
   WriteLn;
   WriteLn('Usage:');
-  WriteLn(#9 + ExtractFileName(ParamStr(0)) + ' [-a:#] [-r] -i:filemask [-i:filemask...] [-o:file.inc]');
+  WriteLn(#9 + ExtractFileName(ParamStr(0)) + ' [options] -i:filemask [-i:filemask...] [-o:file.inc]');
   WriteLn;
   WriteLn('-a'#9'Specifies a desired alignment (1, 2, 4, 8) if file can''t be aligned');
   WriteLn(#9'or no alignment is specified, best alignment possible is determined');
   WriteLn(#9'automatically.');
   WriteLn('-c:##'#9'Specifies number of columns of values to use, defaults to 8.');
+  WriteLn('-f'#9'Creates final reference structure.');
   WriteLn('-l'#9'Uses lowercase for hexadecimal values. Defaults to uppercase.');
   WriteLn('-r'#9'Searches for files recursively.');
   WriteLn('-y'#9'Automatically overwrites existing file.');
@@ -153,6 +154,9 @@ begin
   ConstNames.Add(Result)
 end;
 
+var
+  References: TStringList = nil;
+
 function AddFile(const Filename: String): Byte;
 var
   FStream: TFileStream;
@@ -188,9 +192,14 @@ begin
       Align := 1;
 
     // Write out the header of the file.
+    S := PurgeFilename(Filename);
     WriteToFile(Format(Spacer + '// generated from file "%s"', [ExtractFileName(Filename)]));
-    WriteToFile(Format(Spacer + '%S: Array[0..%d] of %s =', [PurgeFilename(Filename), (FStream.Size div Align) - 1, AlignmentToStr(Align)]));
+    WriteToFile(Format(Spacer + '%S: Array[0..%d] of %s =', [S, (FStream.Size div Align) - 1, AlignmentToStr(Align)]));
     WriteToFile(Spacer + '(');
+
+    // Stores file reference if option is activated.
+    if Assigned(References) then
+      References.Add(S);
 
     MStream := TMemoryStream.Create;
     try
@@ -298,7 +307,7 @@ begin
       for I := 1 to ParamCount do
       begin
         // Check is the switch is one of the defined.
-        X := Pos(UpCase((Copy(ParamStr(I), 2, 1) + #32)[1]), 'ACLRYIOST');
+        X := Pos(UpCase((Copy(ParamStr(I), 2, 1) + #32)[1]), 'ACFLRYIOST');
         // Check for initial "-" or "/" symbol.
         if not CharInSet((Copy(ParamStr(I), 1, 1) + #32)[1], ['-', '/']) or (X = 0) then
           raise ExitException.Create(Format('Invalid parameter "%s".', [ParamStr(I)]));
@@ -324,32 +333,35 @@ begin
                 Columns := (Ord((Copy(ParamStr(I), 4, 1) + '0')[1]) - 48) * 10 + (Ord((Copy(ParamStr(I), 5, 1) + '0')[1]) - 48)
             end else
               raise ExitException.Create(Format('Invalid parameter "%s".', [ParamStr(I)]));
-          3: // -l
+          3: // -f
+            if (Length(ParamStr(I)) = 2) and (not Assigned(References)) then
+              References := TStringList.Create;
+          4: // -l
             if Length(ParamStr(I)) = 2 then
               UseLowercase := True
             else
               raise ExitException.Create(Format('Invalid parameter "%s".', [ParamStr(I)]));
-          4:  // -r
+          5:  // -r
             if Length(ParamStr(I)) = 2 then
               Recursive := True
             else
               raise ExitException.Create(Format('Invalid parameter "%s".', [ParamStr(I)]));
-          5:  // -y
+          6:  // -y
             if Length(ParamStr(I)) = 2 then
               OverWrite := True
             else
               raise ExitException.Create(Format('Invalid parameter "%s".', [ParamStr(I)]));
-          6:  // -i:filemask
+          7:  // -i:filemask
             if (Length(ParamStr(I)) > 3) and CharInSet((Copy(ParamStr(I), 3, 1) + #32)[1], [#32, ':']) then
               FindFiles(GetCurrentDir, Copy(ParamStr(I), 4, MaxInt))
             else
               raise ExitException.Create(Format('Invalid parameter "%s".', [ParamStr(I)]));
-          7:  // -o:filename
+          8:  // -o:filename
             if (Length(ParamStr(I)) > 3) and CharInSet((Copy(ParamStr(I), 3, 1) + #32)[1], [#32, ':']) then
               OutputFileName := Copy(ParamStr(I), 4, MaxInt)
             else
               raise ExitException.Create(Format('Invalid parameter "%s".', [ParamStr(I)]));
-          8:  // -s:# or -s:##
+          9:  // -s:# or -s:##
             if ((Length(ParamStr(I)) = 4) or (Length(ParamStr(I)) = 5)) and
                CharInSet((Copy(ParamStr(I), 3, 1) + #32)[1], [#32, ':']) and
                CharInSet((Copy(ParamStr(I), 4, 1) + #32)[1], ['0'..'9']) and
@@ -362,7 +374,7 @@ begin
                   (Ord((Copy(ParamStr(I), 5, 1) + '0')[1]) - 48))
             end else
               raise ExitException.Create(Format('Invalid parameter "%s".', [ParamStr(I)]));
-          9:  // -t
+          10:  // -t
             if Length(ParamStr(I)) = 2 then
               Spacer := #9
             else
@@ -426,15 +438,44 @@ begin
           Files.Delete(0);
 
           // If we have other files to add, insert a separation line.
-          if Files.Count > 0 then
+          if (Files.Count > 0) or (Assigned(References) and (References.Count > 0)) then
             WriteToFile()
-        end
+        end;
+
+        if Assigned(References) then
+        begin
+          WriteToFile('type');
+          WriteToFile(#32#32'TBinaryReference = packed record');
+          WriteToFile(#32#32#32#32'Size: Integer;');
+          WriteToFile(#32#32#32#32'Data: Pointer;');
+          WriteToFile(#32#32'end;');
+          WriteToFile;
+          WriteToFile('const');
+          WriteToFile(Format(#32#32'BINARIES_REFERENCES_COUNT = %d;', [References.Count]));
+          WriteToFile;
+          WriteToFile(#32#32'BINARIES_REFERENCES: Array[0..BINARIES_REFERENCES_COUNT - 1] of TBinaryReference = (');
+
+          while References.Count > 0 do
+          begin
+            S := '';
+            if References.Count > 1 then
+              S := ',';
+            WriteToFile(Format(#32#32#32#32'(Size: SizeOf(%s); Data: @%s[0])%s', [References[0], References[0], S]));
+            References.Delete(0)
+          end;
+
+          WriteToFile(#32#32');');
+        end;
       finally
         // Truncates unused preallocated space.
         OutputStream.Size := OutputStream.Position;
         OutputStream.Free
       end
     finally
+      if Assigned(References) then
+      begin
+        References.Free
+      end;
       Files.Free;
       ConstNames.Free
     end
